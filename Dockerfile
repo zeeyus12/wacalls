@@ -15,6 +15,7 @@ RUN CGO_ENABLED=0 go build -o /wacalls ./cmd/server
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
+RUN mkdir -p /app/data
 COPY --from=build /wacalls /app/wacalls
 COPY --from=client /app/client/dist /app/client/dist
 ENV PORT=8080
