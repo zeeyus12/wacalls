@@ -35,11 +35,15 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	restoreFromSupabase(*dbPath, log)
+	finalBackup := startSupabaseBackup(ctx, *dbPath, log)
+
 	srv, err := newServer(ctx, *dbPath, *staticDir, *maxCalls, log)
 	if err != nil {
 		log.Error("startup failed", "err", err)
 		os.Exit(1)
 	}
+	defer finalBackup()
 	defer srv.sessions.disconnectAll()
 
 	if err := srv.sessions.Restore(ctx); err != nil {
