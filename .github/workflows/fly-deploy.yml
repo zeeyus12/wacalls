@@ -1,0 +1,36 @@
+name: Deploy to Fly.io
+on:
+  workflow_dispatch:
+    inputs:
+      org:
+        description: Fly organization slug
+        default: personal
+env:
+  APP: wacalls-zeeyus12
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Create app
+        run: flyctl apps create "$APP" --org "${{ inputs.org }}" || echo "app exists"
+      - name: Dedicated IPv4 (required for UDP)
+        run: flyctl ips allocate-v4 --yes -a "$APP" || echo "ip exists"
+      - name: Secrets
+        run: |
+          IP=$(flyctl ips list -a "$APP" --json | jq -r '[.[]|select(.Type=="v4")][0].Address')
+          echo "Public IPv4: $IP"
+          test -n "$IP" && [ "$IP" != "null" ]
+          flyctl secrets set --stage -a "$APP" \
+            WACALLS_PUBLIC_IP="$IP" \
+            WACALLS_API_KEY="${{ secrets.WACALLS_API_KEY }}" \
+            SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
+            SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}"
+      - name: Deploy
+        run: flyctl deploy --remote-only -a "$APP"
+      - name: Result
+        run: |
+          flyctl ips list -a "$APP"
+          echo "URL: https://$APP.fly.dev"
