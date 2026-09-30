@@ -47,7 +47,7 @@ type Bridge struct {
 }
 
 func NewBridge(offerSDP string, log *slog.Logger) (*Bridge, string, error) {
-	pc, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+	pc, err := newBridgePC()
 	if err != nil {
 		return nil, "", err
 	}

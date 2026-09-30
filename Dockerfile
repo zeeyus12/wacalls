@@ -18,5 +18,7 @@ WORKDIR /app
 RUN mkdir -p /app/data
 COPY --from=build /wacalls /app/wacalls
 COPY --from=client /app/client/dist /app/client/dist
+EXPOSE 8080/tcp
+EXPOSE 10000/udp
 ENV PORT=8080
 CMD ["sh","-c","/app/wacalls -addr 0.0.0.0:${PORT} -db /app/data/wacalls.db -static /app/client/dist -max-calls-per-session 1"]

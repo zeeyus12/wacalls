@@ -1,0 +1,28 @@
+app = "wacalls-zeeyus12"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  WACALLS_UDP_PORT = "10000"
+  WACALLS_UDP_BIND = "fly-global-services"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[services]]
+  protocol = "udp"
+  internal_port = 10000
+  [[services.ports]]
+    port = 10000
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "512mb"
