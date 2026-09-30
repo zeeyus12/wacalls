@@ -36,3 +36,5 @@ Thumbs.db
 *~
 !native/
 !native/*.dll
+data/
+*.db
