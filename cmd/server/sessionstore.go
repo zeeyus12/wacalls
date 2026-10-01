@@ -57,6 +57,9 @@ func (s *sessionStore) insert(ctx context.Context, id, name string) error {
 
 func (s *sessionStore) setJID(ctx context.Context, id, jid string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE sessions SET jid = ? WHERE id = ?`, jid, id)
+	if err == nil && jid != "" {
+		backupSoon()
+	}
 	return err
 }
 

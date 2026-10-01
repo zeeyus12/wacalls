@@ -35,8 +35,8 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	restoreFromSupabase(*dbPath, log)
-	finalBackup := startSupabaseBackup(ctx, *dbPath, log)
+	safeToBackup := restoreFromSupabase(*dbPath, log)
+	finalBackup := startSupabaseBackup(ctx, *dbPath, log, safeToBackup)
 
 	srv, err := newServer(ctx, *dbPath, *staticDir, *maxCalls, log)
 	if err != nil {
