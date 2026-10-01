@@ -496,6 +496,7 @@ func (s *server) doWebRTC(sess *Session, w http.ResponseWriter, r *http.Request)
 		_ = ac.call.SendVideo(f.Data)
 	}
 	bridge.OnTerminalICE = func() {
+		s.log.Warn("browser webrtc connection failed or closed, hanging up whatsapp call", "call_id", callID)
 		go sess.terminateCall(callID, "user_ended")
 	}
 	sess.setBridge(callID, bridge)
