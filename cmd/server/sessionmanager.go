@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/polymorfa/hypermeow"
 	"github.com/polymorfa/hypermeow/store/sqlstore"
@@ -203,4 +204,43 @@ func (m *SessionManager) disconnectAll() {
 	for _, s := range all {
 		s.shutdown()
 	}
+}
+
+// PairPhone starts pairing for a session and returns an 8-character code to
+// type into WhatsApp > Linked Devices > Link with phone number instead.
+func (m *SessionManager) PairPhone(id, phone string) (string, error) {
+	s, ok := m.Get(id)
+	if !ok {
+		return "", fmt.Errorf("no session %s", id)
+	}
+	if s.client.Store.ID != nil {
+		return "", fmt.Errorf("session already paired")
+	}
+	digits := make([]rune, 0, len(phone))
+	for _, c := range phone {
+		if c >= '0' && c <= '9' {
+			digits = append(digits, c)
+		}
+	}
+	s.replaceClient(whatsmeow.NewClient(m.container.NewDevice(), m.waLogger))
+	if err := s.startPairing(m.appCtx); err != nil {
+		return "", fmt.Errorf("start pairing: %w", err)
+	}
+	// wait for the connection to be fully established (first QR event)
+	for i := 0; i < 40; i++ {
+		s.mu.Lock()
+		st := s.auth.State
+		s.mu.Unlock()
+		if st == "qr" {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	code, err := s.client.PairPhone(m.appCtx, string(digits), true, whatsmeow.PairClientChrome, "Chrome (Linux)")
+	if err != nil {
+		return "", err
+	}
+	m.broker.emitSessionList(m.infos())
+	m.log.Info("session phone-pairing started", "session", id)
+	return code, nil
 }
