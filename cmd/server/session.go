@@ -195,8 +195,23 @@ func (s *Session) startOutgoingGroup(ctx context.Context, groupJID string, isVid
 }
 
 func (s *Session) handleEvent(rawEvt any) {
-	switch rawEvt.(type) {
+	switch e := rawEvt.(type) {
+	case *events.Disconnected:
+		s.log.Warn("whatsapp websocket closed by the server")
+	case *events.StreamReplaced:
+		s.log.Warn("whatsapp stream replaced: another client is using this same linked session")
+	case *events.TemporaryBan:
+		s.log.Error("whatsapp temporary ban", "detail", e.String())
+	case *events.ConnectFailure:
+		s.log.Error("whatsapp connect failure", "reason", int(e.Reason), "message", e.Message)
+	case *events.KeepAliveTimeout:
+		s.log.Warn("whatsapp keepalive timeout", "errors", e.ErrorCount)
+	case *events.StreamError:
+		s.log.Warn("whatsapp stream error", "code", e.Code)
+	case *events.ClientOutdated:
+		s.log.Error("whatsapp client outdated, update the library")
 	case *events.Connected:
+		s.log.Info("whatsapp connected")
 		if id := s.client.Store.ID; id != nil {
 			_ = s.mgr.store.setJID(s.mgr.appCtx, s.id, id.String())
 		}
