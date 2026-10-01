@@ -166,6 +166,9 @@ func (s *Session) handleIncomingCall(c *meowcaller.Call) {
 
 // extraOnEnd é opcional (nil no caso normal) — ver a doc de wireCall.
 func (s *Session) startOutgoing(ctx context.Context, peer types.JID, isVideo bool, extraOnEnd func(reason string)) (string, error) {
+	if err := s.ensureConnected(ctx); err != nil {
+		return "", err
+	}
 	c, err := s.meow.CallWithOptions(ctx, peer.String(), meowcaller.CallOptions{Video: isVideo})
 	if err != nil {
 		return "", err
@@ -178,6 +181,9 @@ func (s *Session) startOutgoing(ctx context.Context, peer types.JID, isVideo boo
 // (groupJID tipo "1234567890-1234567890@g.us"), tocando pra todo membro
 // atual do grupo.
 func (s *Session) startOutgoingGroup(ctx context.Context, groupJID string, isVideo bool) (string, error) {
+	if err := s.ensureConnected(ctx); err != nil {
+		return "", err
+	}
 	c, err := s.meow.GroupCallByIDWithOptions(ctx, groupJID, meowcaller.GroupCallOptions{
 		GroupJID: groupJID, Video: isVideo,
 	})

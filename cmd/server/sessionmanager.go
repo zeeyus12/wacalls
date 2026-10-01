@@ -114,6 +114,7 @@ func (m *SessionManager) Restore(ctx context.Context) error {
 		if err := s.connect(ctx); err != nil {
 			m.log.Error("session connect failed", "session", row.ID, "err", err)
 		}
+		go s.watchdog()
 	}
 	m.broker.emitSessionList(m.infos())
 	m.log.Info("sessions restored", "count", len(m.infos()))
@@ -129,6 +130,7 @@ func (m *SessionManager) Create(name string) (string, error) {
 	client := whatsmeow.NewClient(device, m.waLogger)
 	s := newSession(m, id, name, client)
 	m.register(s)
+	go s.watchdog()
 	m.broker.emitSessionList(m.infos())
 	if err := s.startPairing(m.appCtx); err != nil {
 		m.log.Error("start pairing failed", "session", id, "err", err)

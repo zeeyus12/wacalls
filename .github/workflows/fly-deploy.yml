@@ -29,7 +29,11 @@ jobs:
             SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
             SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}"
       - name: Deploy
-        run: flyctl deploy --remote-only -a "$APP"
+        run: flyctl deploy --remote-only --ha=false -a "$APP"
+      - name: Keep exactly ONE machine
+        # Two machines share one WhatsApp login and kick each other off
+        # ("stream replaced"), which shows up as "websocket not connected".
+        run: flyctl scale count 1 --yes -a "$APP" || true
       - name: Result
         run: |
           flyctl ips list -a "$APP"
