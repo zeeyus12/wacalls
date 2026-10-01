@@ -90,6 +90,9 @@ export const CallCard = ({ call }: { call: CallSummary }) => {
     };
   }, [conn]);
 
+  // Depende de isVideo e dos streams: os <video> só existem quando a chamada
+  // já é de vídeo, então se o status mudar para vídeo depois do conn ser
+  // registrado, o efeito precisa rodar de novo para ligar o stream remoto.
   useEffect(() => {
     if (!conn) return;
     if (remoteVideoRef.current && conn.remoteVideoStream) {
@@ -100,7 +103,7 @@ export const CallCard = ({ call }: { call: CallSummary }) => {
       localVideoRef.current.srcObject = conn.localVideoStream;
       localVideoRef.current.play().catch(() => {});
     }
-  }, [conn]);
+  }, [conn, isVideo, conn?.remoteVideoStream, conn?.localVideoStream]);
 
   useEffect(() => {
     const el = audioRef.current as (HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> }) | null;
@@ -157,6 +160,24 @@ export const CallCard = ({ call }: { call: CallSummary }) => {
         <Meter label="Mic" db={micDb} />
         <Meter label="Peer" db={peerDb} />
         <audio ref={audioRef} autoPlay />
+        {conn && (conn.audioState() !== "running" || audioRef.current?.paused) && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void conn
+                .resumeAudio()
+                .then(() => audioRef.current?.play())
+                .catch(() => {});
+              remoteVideoRef.current?.play().catch(() => {});
+            }}
+          >
+            Tap to enable audio
+          </Button>
+        )}
+        {conn && (
+          <p className="break-all font-mono text-[10px] text-muted-foreground">{conn.diag()}</p>
+        )}
 
         <div className="flex flex-wrap items-center gap-1.5 border-t pt-3">
           {canVideo && conn && call.status === "connected" && (

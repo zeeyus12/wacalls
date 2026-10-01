@@ -29,6 +29,8 @@ export type VideoPipe = {
   // requestKeyframe força o próximo quadro capturado a ser um keyframe. Chamado
   // quando o servidor repassa um PLI/FIR do peer pelo canal "vp8".
   requestKeyframe: () => void;
+  // stats expõe contadores do decoder para o painel de diagnóstico da UI.
+  stats: () => { decoded: number; decodeErrors: number; lastError: string; decoderState: string };
   close: () => void;
 };
 
@@ -154,9 +156,13 @@ export const startVideoPipe = async ({ camDeviceId, onEncoded }: StartOpts): Pro
 
   // rotação (graus, horário) do último quadro recebido, vinda da extensão CVO.
   let peerRotation: 0 | 90 | 180 | 270 = 0;
+  let decodedFrames = 0;
+  let decodeErrors = 0;
+  let lastDecodeError = "";
   const buildDecoder = (): VideoDecoder => {
     const d = new VideoDecoder({
       output: (frame) => {
+        decodedFrames += 1;
         try {
           if (ctx) {
             const fw = frame.displayWidth || canvas.width;
@@ -177,7 +183,11 @@ export const startVideoPipe = async ({ camDeviceId, onEncoded }: StartOpts): Pro
           frame.close();
         }
       },
-      error: (e) => console.error("[video] erro no decoder", e),
+      error: (e) => {
+        decodeErrors += 1;
+        lastDecodeError = String(e?.message ?? e);
+        console.error("[video] erro no decoder", e);
+      },
     });
     // Stream Annex-B com SPS/PPS embutido em todo keyframe → sem `description`.
     d.configure({ codec: VIDEO_H264_CODEC, optimizeForLatency: true });
@@ -210,6 +220,8 @@ export const startVideoPipe = async ({ camDeviceId, onEncoded }: StartOpts): Pro
         }),
       );
     } catch (e) {
+      decodeErrors += 1;
+      lastDecodeError = String((e as Error)?.message ?? e);
       console.error("[video] falha ao decodificar, resetando", e);
       try {
         decoder.close();
@@ -240,11 +252,19 @@ export const startVideoPipe = async ({ camDeviceId, onEncoded }: StartOpts): Pro
     forceKeyframe = true;
   };
 
+  const stats = () => ({
+    decoded: decodedFrames,
+    decodeErrors,
+    lastError: lastDecodeError,
+    decoderState: decoder.state,
+  });
+
   return {
     localStream,
     remoteStream,
     pushEncodedFrame,
     requestKeyframe,
+    stats,
     close,
   };
 };

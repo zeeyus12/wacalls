@@ -35,6 +35,11 @@ type Bridge struct {
 	// atômico em vez de um bool simples sem proteção nenhuma.
 	quiet atomic.Bool
 
+	// Contadores de saída (servidor → browser) para o log "bridge out".
+	pcmOut   atomic.Uint64
+	videoOut atomic.Uint64
+	sendErrs atomic.Uint64
+
 	// OnBrowserPCM é chamado com o PCM mono 16 kHz decodificado, capturado do microfone do browser.
 	OnBrowserPCM func(pcm []float32)
 	// OnBrowserVideo é chamado com cada quadro VP8 codificado, capturado da câmera do browser.
@@ -52,6 +57,7 @@ func NewBridge(offerSDP string, log *slog.Logger) (*Bridge, string, error) {
 		return nil, "", err
 	}
 	br := &Bridge{pc: pc, log: log}
+	go br.logStats()
 
 	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
 		switch dc.Label() {
@@ -111,7 +117,12 @@ func (b *Bridge) WritePCM(pcm []float32) error {
 	if dc == nil || len(pcm) == 0 {
 		return nil
 	}
-	return dc.Send(media.PCMFloat32ToInt16LE(pcm))
+	if err := dc.Send(media.PCMFloat32ToInt16LE(pcm)); err != nil {
+		b.sendErrs.Add(1)
+		return err
+	}
+	b.pcmOut.Add(1)
+	return nil
 }
 
 // WriteVideo sends one encoded VP8 frame from the peer to the browser over the
@@ -122,7 +133,41 @@ func (b *Bridge) WriteVideo(f media.VideoFrame) error {
 	if dc == nil || len(f.Data) == 0 {
 		return nil
 	}
-	return dc.Send(media.EncodeVideoFrame(f))
+	if err := dc.Send(media.EncodeVideoFrame(f)); err != nil {
+		b.sendErrs.Add(1)
+		return err
+	}
+	b.videoOut.Add(1)
+	return nil
+}
+
+// logStats logs, every 5 seconds, how much audio/video this bridge has pushed
+// to the browser and the state of its data channels. Stops when the peer
+// connection is closed.
+func (b *Bridge) logStats() {
+	t := time.NewTicker(5 * time.Second)
+	defer t.Stop()
+	for range t.C {
+		state := b.pc.ConnectionState()
+		if state == webrtc.PeerConnectionStateClosed {
+			return
+		}
+		pcmState, videoState := "none", "none"
+		if dc := b.dc.Load(); dc != nil {
+			pcmState = dc.ReadyState().String()
+		}
+		if dc := b.videoDC.Load(); dc != nil {
+			videoState = dc.ReadyState().String()
+		}
+		b.log.Info("bridge out",
+			"pcm_msgs", b.pcmOut.Load(),
+			"video_frames", b.videoOut.Load(),
+			"send_errors", b.sendErrs.Load(),
+			"pcm_dc", pcmState,
+			"video_dc", videoState,
+			"conn", state.String(),
+		)
+	}
 }
 
 // RequestKeyframe asks the browser to emit an immediate keyframe, over the same

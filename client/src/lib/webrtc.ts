@@ -30,6 +30,13 @@ export type OpenCall = {
   // "vp8" (evitar mais uma renegociação) nem avisa o backend sozinho — ver
   // useDowngradeFromVideo.
   downgradeFromVideo: () => void;
+  // diag devolve uma linha de texto com o estado do áudio/vídeo, mostrada na
+  // UI da chamada para depurar no celular (sem devtools).
+  diag: () => string;
+  // resumeAudio retoma o AudioContext (iOS pode deixá-lo suspenso).
+  resumeAudio: () => Promise<void>;
+  // audioState diz se o áudio da chamada está rodando.
+  audioState: () => string;
   close: () => void;
 };
 
@@ -54,6 +61,7 @@ export const openCall = async (
   });
 
   const pc = new RTCPeerConnection({ iceServers: [] });
+  const counters = { pcmIn: 0, vidIn: 0 };
 
   const dc = pc.createDataChannel(PCM_CHANNEL_LABEL, { ordered: true });
   dc.binaryType = "arraybuffer";
@@ -80,6 +88,7 @@ export const openCall = async (
       },
     });
     vdc.onmessage = (e: MessageEvent<ArrayBuffer>) => {
+      counters.vidIn += 1;
       // Mensagem de controle de 1 byte: pedido de keyframe (PLI/FIR do peer).
       if (e.data.byteLength === 1 && new Uint8Array(e.data)[0] === VIDEO_CTL_KEYFRAME_REQUEST) {
         pipe.requestKeyframe();
@@ -122,6 +131,7 @@ export const openCall = async (
   const streamDest = ctx.createMediaStreamDestination();
   playbackNode.connect(streamDest);
   dc.onmessage = (e: MessageEvent<ArrayBuffer>) => {
+    counters.pcmIn += 1;
     playbackNode.port.postMessage(int16LEToFloat32(e.data));
   };
 
@@ -175,6 +185,25 @@ export const openCall = async (
       );
       await pc.setRemoteDescription({ type: "answer", sdp: renegotiatedAnswer });
     },
+    diag: () => {
+      const v = videoPipe?.stats();
+      return [
+        `audioctx=${ctx.state}`,
+        `ice=${pc.iceConnectionState}`,
+        `pcm-dc=${dc.readyState}`,
+        `pcm-in=${counters.pcmIn}`,
+        `vid-dc=${videoDc?.readyState ?? "none"}`,
+        `vid-in=${counters.vidIn}`,
+        v ? `decoded=${v.decoded} dec-err=${v.decodeErrors} dec=${v.decoderState}` : "no-video-pipe",
+        v?.lastError ? `last-err=${v.lastError}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+    },
+    resumeAudio: async () => {
+      await ctx.resume();
+    },
+    audioState: () => ctx.state,
     downgradeFromVideo: () => {
       if (!videoPipe) return;
       try {
