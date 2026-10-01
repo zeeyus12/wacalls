@@ -17,7 +17,15 @@ jobs:
       - name: Create app
         run: flyctl apps create "$APP" --org "${{ inputs.org }}" || echo "app exists"
       - name: Dedicated IPv4 (required for UDP)
-        run: flyctl ips allocate-v4 --yes -a "$APP" || echo "ip exists"
+        run: |
+          # Only allocate when the app has no dedicated IPv4 yet.
+          # Each dedicated IPv4 costs $2/month, so never add a second one.
+          COUNT=$(flyctl ips list -a "$APP" --json | jq '[.[]|select(.Type=="v4")]|length')
+          if [ "$COUNT" -gt 0 ]; then
+            echo "Dedicated IPv4 already allocated ($COUNT), skipping"
+          else
+            flyctl ips allocate-v4 --yes -a "$APP"
+          fi
       - name: Secrets
         run: |
           IP=$(flyctl ips list -a "$APP" --json | jq -r '[.[]|select(.Type=="v4")][0].Address')
