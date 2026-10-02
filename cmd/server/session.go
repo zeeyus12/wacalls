@@ -310,7 +310,11 @@ func (s *Session) terminateCall(callID string, reason string) {
 	if !ok {
 		return
 	}
-	_ = reason
+	// Record the real cause BEFORE hanging up, so the app is told why the call
+	// ended (e.g. "browser_media_failed") instead of a bare "ended". endCall is
+	// a no-op for a call it has already closed out, so the Hangup that follows
+	// cannot produce a second, vaguer event.
+	s.mgr.broker.endCall(callID, reason)
 	_ = ac.call.Hangup()
 }
 
