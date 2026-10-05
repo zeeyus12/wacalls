@@ -57,6 +57,7 @@ func (s *Session) watchdog() {
 		if cur, ok := s.mgr.Get(s.id); !ok || cur != s {
 			return // session was deleted
 		}
+		s.reapStaleCalls()
 		if s.client == nil || s.client.Store.ID == nil || s.client.IsConnected() {
 			continue
 		}

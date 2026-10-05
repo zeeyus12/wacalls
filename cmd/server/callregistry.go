@@ -3,14 +3,18 @@ package main
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 
 	meowcaller "github.com/purpshell/meowcaller"
 )
 
 type activeCall struct {
-	call   *meowcaller.Call
-	src    *liveAudioSource
-	bridge *Bridge
+	// startedAt lets the reaper tell a call that is genuinely in progress from an entry
+	// that was never cleaned up.
+	startedAt time.Time
+	call      *meowcaller.Call
+	src       *liveAudioSource
+	bridge    *Bridge
 	// videoSink é registrado em Call.ReceiveVideo já em wireCall, antes do
 	// bridge WebRTC do browser existir — ver o comentário em
 	// orientedVideoSink (bridge.go) pra saber por quê.
@@ -53,6 +57,17 @@ func (r *callRegistry) remove(callID string) (*activeCall, bool) {
 	}
 	delete(r.calls, callID)
 	return ac, true
+}
+
+// snapshot returns a copy of the current entries, safe to iterate without the lock.
+func (r *callRegistry) snapshot() map[string]*activeCall {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make(map[string]*activeCall, len(r.calls))
+	for id, ac := range r.calls {
+		out[id] = ac
+	}
+	return out
 }
 
 func (r *callRegistry) count() int {

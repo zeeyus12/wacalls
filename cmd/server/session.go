@@ -94,7 +94,7 @@ func (s *Session) wireCall(c *meowcaller.Call, direction string, extraOnEnd func
 	// primeiro pacote antes do doWebRTC terminar a negociação WebRTC (ver
 	// orientedVideoSink em bridge.go).
 	videoSink := newOrientedVideoSink()
-	s.reg.add(callID, &activeCall{call: c, src: src, videoSink: videoSink})
+	s.reg.add(callID, &activeCall{startedAt: time.Now(), call: c, src: src, videoSink: videoSink})
 	c.ReceiveVideo(videoSink)
 
 	rec := func(status CallStatus) CallRecord {
@@ -315,7 +315,13 @@ func (s *Session) terminateCall(callID string, reason string) {
 	// a no-op for a call it has already closed out, so the Hangup that follows
 	// cannot produce a second, vaguer event.
 	s.mgr.broker.endCall(callID, reason)
-	_ = ac.call.Hangup()
+	if err := ac.call.Hangup(); err != nil {
+		s.log.Warn("hangup failed - freeing the call slot anyway", "call_id", callID, "err", err)
+	}
+	// Do not wait for the library's end callback: if the hangup could not be sent (socket down) or
+	// the call was already gone, that callback never comes and the entry would count against
+	// max-calls-per-session forever. removeCall is idempotent.
+	s.removeCall(callID)
 }
 
 func (s *Session) teardownAllCalls() {

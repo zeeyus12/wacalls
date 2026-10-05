@@ -25,6 +25,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /api/sessions/{sid}/pair", s.handleSessionPair)
 	mux.HandleFunc("POST /api/sessions/{sid}/pair-phone", s.handleSessionPairPhone)
 	mux.HandleFunc("GET /api/sessions/{sid}/calls", s.handleCallsCount)
+	mux.HandleFunc("DELETE /api/sessions/{sid}/calls", s.handleCallsClear)
 	mux.HandleFunc("POST /api/sessions/{sid}/calls", s.handleStartCall)
 	mux.HandleFunc("GET /api/sessions/{sid}/calls/{id}", s.handleCallGet)
 	mux.HandleFunc("POST /api/sessions/{sid}/calls/{id}/webrtc", s.handleWebRTC)
@@ -119,6 +120,15 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"maxCallsPerSession": s.sessions.maxCalls})
+}
+
+// handleCallsClear hangs up and forgets every call on the session ("unstick"). 200 {cleared:n}.
+func (s *server) handleCallsClear(w http.ResponseWriter, r *http.Request) {
+	if sess := s.sessionByID(w, r.PathValue("sid")); sess != nil {
+		n := sess.clearAllCalls("cleared")
+		s.log.Info("cleared calls on request", "session", sess.id, "count", n)
+		writeJSON(w, http.StatusOK, map[string]any{"cleared": n})
+	}
 }
 
 func (s *server) handleCallsCount(w http.ResponseWriter, r *http.Request) {
@@ -302,6 +312,10 @@ func (s *server) doStartCall(sess *Session, w http.ResponseWriter, r *http.Reque
 	if strings.TrimSpace(body.Phone) == "" && group == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "phone or group required"})
 		return
+	}
+	// Dead entries must never block a new call: sweep them before enforcing any limit.
+	if n := sess.reapStaleCalls(); n > 0 {
+		s.log.Info("freed stale calls before starting a new one", "count", n)
 	}
 	owner := clientID(r)
 	if !s.broker.tryReserveOwner(owner) {
