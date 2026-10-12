@@ -110,24 +110,28 @@ func (s *Session) wireCall(c *meowcaller.Call, direction string, extraOnEnd func
 		return r
 	}
 
+	// The library fires the "ended" phase AND OnEnd(reason) for one hang-up. Whichever reports first
+	// closes the call out; the phase callback waits a moment so the REAL reason (declined, timeout,
+	// failed...) wins instead of a bare "ended" that tells the app nothing.
+	var endOnce sync.Once
+	finish := func(reason string) {
+		endOnce.Do(func() {
+			s.log.Info("call ended", "call_id", callID, "reason", reason)
+			s.removeCall(callID)
+			s.mgr.broker.endCall(callID, reason)
+			if extraOnEnd != nil {
+				extraOnEnd(reason)
+			}
+		})
+	}
 	c.OnStateChange(func(p meowcaller.CallPhase) {
 		if p == meowcaller.CallPhaseEnded {
-			s.removeCall(callID)
-			s.mgr.broker.endCall(callID, "ended")
-			if extraOnEnd != nil {
-				extraOnEnd("ended")
-			}
+			time.AfterFunc(600*time.Millisecond, func() { finish("ended") })
 			return
 		}
 		s.mgr.broker.upsertCall(rec(mapCallPhase(p)))
 	})
-	c.OnEnd(func(reason string) {
-		s.removeCall(callID)
-		s.mgr.broker.endCall(callID, reason)
-		if extraOnEnd != nil {
-			extraOnEnd(reason)
-		}
-	})
+	c.OnEnd(func(reason string) { finish(reason) })
 	c.OnVideoKeyframeRequest(func() {
 		if b, ok := s.reg.bridge(callID); ok {
 			_ = b.RequestKeyframe()

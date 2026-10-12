@@ -574,9 +574,14 @@ func (s *server) doVideoStart(sess *Session, w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such call"})
 		return
 	}
-	if err := ac.call.StartVideo(); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
+	// StartVideo on a call that is ALREADY video re-requests an upgrade: it gates our own outgoing
+	// picture until the peer accepts and sends the peer a bogus upgrade request (the callee then sits on
+	// "Connecting"). Already video means there is nothing to start.
+	if !ac.call.IsVideo() {
+		if err := ac.call.StartVideo(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
 	}
 	s.broker.setCallMedia(id, "video")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -635,12 +640,15 @@ func (s *server) doVideoAccept(sess *Session, w http.ResponseWriter, r *http.Req
 	// estado, e aquele "stopped" espúrio nunca é mandado. Na ordem errada
 	// (Accept depois Start), o "stopped" chegava bem na hora que devíamos
 	// estar pedindo pra ligar, e o vídeo nunca saía de verdade pro WhatsApp.
-	if err := ac.call.StartVideo(); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
+	if !ac.call.IsVideo() { // see doVideoStart: never re-request video on a call that already is video
+		if err := ac.call.StartVideo(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
 	}
 	if err := ac.call.AcceptVideo(); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		// No pending upgrade is not a failure: the peer's message was only its camera state.
+		writeJSON(w, http.StatusOK, map[string]string{"status": "nothing-to-accept", "detail": err.Error()})
 		return
 	}
 	s.broker.setCallMedia(id, "video")
