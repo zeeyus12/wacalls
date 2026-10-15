@@ -46,6 +46,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /api/sessions/{sid}/history", s.handleHistory)
 
 	mux.HandleFunc("GET /api/events", s.handleEvents)
+	mux.HandleFunc("GET /api/debug/log", s.handleDebugLog)
 
 	if s.staticDir != "" {
 		if _, err := os.Stat(s.staticDir); err == nil {

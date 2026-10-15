@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -29,7 +30,7 @@ func main() {
 	if *debug {
 		level = slog.LevelDebug
 	}
-	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+	log := slog.New(slog.NewTextHandler(io.MultiWriter(os.Stderr, callLog), &slog.HandlerOptions{Level: level}))
 	slog.SetDefault(log)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

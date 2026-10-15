@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"sync"
@@ -20,7 +21,7 @@ import (
 // meowcaller usa um logger no-op por padrão, deixando todo o pipeline de
 // chamada/mídia invisível.
 func meowLogger() zerolog.Logger {
-	return zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "15:04:05.000"}).
+	return zerolog.New(zerolog.ConsoleWriter{Out: io.MultiWriter(os.Stderr, callLog), NoColor: true, TimeFormat: "15:04:05.000"}).
 		Level(zerolog.DebugLevel).With().Timestamp().Logger()
 }
 
